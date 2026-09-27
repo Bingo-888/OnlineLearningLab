@@ -13,8 +13,11 @@
   "dependencies": {
     "@oll/shared": "workspace:*",
     "@tanstack/react-query": "^5.104.0",
+    "epubjs": "^0.3.93",
+    "pdfjs-dist": "^6.3.289",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "react-pdf": "^11.0.0",
     "react-router": "^8.4.0"
   },
   "devDependencies": {
