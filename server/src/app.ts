@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { serveStatic } from '@hono/node-server/serve-static'
 import type { DatabaseSync } from 'node:sqlite'
 import type { AppEnv } from './types.js'
 import { authRoutes } from './routes/auth.js'
@@ -23,6 +24,13 @@ export function createApp(opts: AppOptions): Hono<AppEnv> {
   app.route('/api/auth', authRoutes(opts, loginLimiter))
   app.route('/api/books', bookRoutes(opts))
   app.route('/api/admin', adminRoutes(opts))
+  if (opts.webRoot) {
+    app.use('*', serveStatic({ root: opts.webRoot }))
+    app.get('*', (c, next) => {
+      if (c.req.path.startsWith('/api/')) return next()
+      return serveStatic({ root: opts.webRoot!, path: 'index.html' })(c, next)
+    })
+  }
   app.notFound((c) => c.json({ error: 'not_found' }, 404))
   return app
 }
