@@ -1,19 +1,19 @@
-import { DatabaseSync } from 'node:sqlite'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Hono } from 'hono'
 import { createApp, type AppEnv } from './app.js'
+import { openDb, type Db } from './db.js'
 
 export interface TestCtx {
   app: Hono<AppEnv>
-  db: DatabaseSync
+  db: Db
   dataDir: string
 }
 
 export function makeTestApp(opts: { maxUploadMb?: number } = {}): TestCtx {
   const dataDir = mkdtempSync(join(tmpdir(), 'oll-test-'))
-  const db = new DatabaseSync(':memory:')
+  const db = openDb(':memory:')
   const app = createApp({ db, dataDir, cookieSecure: false, maxUploadMb: opts.maxUploadMb ?? 200 })
   return { app, db, dataDir }
 }

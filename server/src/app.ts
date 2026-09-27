@@ -1,5 +1,8 @@
 import { Hono } from 'hono'
 import type { DatabaseSync } from 'node:sqlite'
+import type { AppEnv } from './types.js'
+
+export type { AppEnv } from './types.js'
 
 export interface AppOptions {
   db: DatabaseSync
@@ -8,8 +11,6 @@ export interface AppOptions {
   cookieSecure?: boolean
   webRoot?: string | null   // 生产静态资源目录；开发/测试传 null
 }
-
-export type AppEnv = { Variables: { user: unknown } }
 
 export function createApp(opts: AppOptions): Hono<AppEnv> {
   const app = new Hono<AppEnv>()
