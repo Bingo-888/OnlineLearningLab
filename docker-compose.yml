@@ -1,7 +1,9 @@
 services:
   app:
     build: .
-    image: online-learning-lab:latest
+    # 快速部署：docker compose pull && docker compose up -d（拉 ghcr.io 预构建镜像）
+    # 本地开发/CI：docker compose up -d --build（两条路共用本文件）
+    image: ghcr.io/bingo888-lab/onlinelearninglab:latest
     container_name: oll
     ports:
       - "3000:3000"
