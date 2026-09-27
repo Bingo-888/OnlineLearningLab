@@ -5,7 +5,7 @@
 
 ## 项目概览
 
-自托管在线学习平台 **v1**（git tag `v0.1.0`）：管理员上传 EPUB/PDF 进入公共书库，登录用户在线阅读，阅读进度自动保存；Docker Compose 一条命令部署。
+自托管在线学习平台（产品阶段 **v1**，发布号与发布流程见「版本与发布」；首个 tag `v0.1.0`）：管理员上传 EPUB/PDF 进入公共书库，登录用户在线阅读，阅读进度自动保存；Docker Compose 一条命令部署。
 
 设计取舍：单进程 + SQLite（`node:sqlite` 同步 API）+ 零外部服务，面向个人/小团队自托管。
 
@@ -28,7 +28,8 @@ pnpm install                    # 依赖变更后
 pnpm dev                        # 交互终端：api→8787，web→5173（vite 代理 /api）
 pnpm -r test                    # 预期：shared 3 + server 57 + web 2 = 62 passed
 pnpm -r typecheck               # 预期：三个包全 Done 无错误
-pnpm -r build                   # 预期：三包 dist 产出（web 有 chunk 体积 warning，正常）
+pnpm build                      # 预期：先过版本一致性校验，再三包 dist 产出（web 有 chunk 体积 warning，正常）
+pnpm version:check              # 预期：[version] OK v0.1.0：4 个 package.json 一致，CHANGELOG 有条目
 node scripts/make-fixtures.mjs  # 生成 e2e/.fixtures/test.{pdf,epub}（gitignored）
 CI=1 pnpm test:e2e              # 预期：3 passed（CI=1 强制 Playwright 自拉干净服务）
 docker compose up -d --build    # 部署 → http://localhost:3000（数据在 ./data）
@@ -47,6 +48,7 @@ server/           # Hono API + 静态托管（生产时同容器托管 SPA）
   src/schema.ts   #   5 张表 DDL：users / sessions / invites / books / progress
   src/auth.ts     #   scrypt 哈希、会话、requireAuth/requireAdmin、登录限流器
   src/files.ts    #   魔数嗅探（%PDF / PK）、Range 解析、数据目录工具
+  src/version.ts  #   运行时读取自身 package.json 的应用版本（health / 启动日志用）
   src/routes/     #   auth.ts / books.ts / admin.ts（每带一个 *.test.ts）
 web/              # React SPA
   src/api/client.ts       # fetch 封装（api.get/post/postForm/put/delete + ApiError）
@@ -55,14 +57,14 @@ web/              # React SPA
   src/reader/             # EpubReader / PdfReader / extract.ts（客户端元数据+封面提取）
   src/components/         # BookCard / UploadDialog / Toc
 e2e/              # Playwright：journey.spec.ts（三幕）+ global-setup.ts
-scripts/          # make-fixtures.mjs / reset-e2e-data.mjs
+scripts/          # make-fixtures.mjs / reset-e2e-data.mjs / set-version.mjs / check-version.mjs
 ```
 
 ## API 速查（全部 JSON；会话 cookie `oll_session`）
 
 | 方法与路径 | 权限 | 说明 |
 |---|---|---|
-| `GET /api/health` | 公开 | `{"ok":true}` |
+| `GET /api/health` | 公开 | `{"ok":true,"version":"0.1.0"}`（version 运行时来自服务端 package.json） |
 | `POST /api/auth/register` | 公开* | 首个用户自动 admin；之后必须邀请码（body: username/password/inviteCode） |
 | `POST /api/auth/login` / `logout`，`GET /api/auth/me` | 公开 / 登录 | 登录限流 10 次/10 分钟/用户名（内存实现） |
 | `GET/POST /api/admin/invites` | admin | 邀请码列表 / 生成 |
@@ -82,18 +84,26 @@ scripts/          # make-fixtures.mjs / reset-e2e-data.mjs
 - **注册路由校验顺序**：`username_taken`(409) 先于邀请码校验(400)——有意为之，测试锁定（`server/src/routes/auth.test.ts`）。
 - 密码 scrypt（N=16384）；会话存 `sha256(token)`；cookie HttpOnly + SameSite=Lax + 30 天；`COOKIE_SECURE=true` 仅用于 HTTPS 反代场景。
 
+## 版本与发布
+
+- **单一事实来源 = 根 `package.json` 的 `version`**：四个 package.json（根 + shared/server/web）必须一致（子包均为私有包，随根版本走）。代码/文档里不硬编码版本号：服务端运行时读自身 `package.json`（`server/src/version.ts`；dev=`src/`、构建=`dist/`、Docker=`pnpm deploy` 产物三种布局下 `../package.json` 均有效），web 由 Vite `define` 注入 `__APP_VERSION__`（改版本号后需重启 dev server）。
+- **升级/发布流程**：`pnpm version:set x.y.z`（同步四个 package.json）→ `CHANGELOG.md` 顶部补 `## [x.y.z] - YYYY-MM-DD` → `pnpm build` 自校验（`scripts/check-version.mjs`：版本一致 + CHANGELOG 有条目，失败即中断，Docker 构建同样经过）→ commit → `git tag -a vx.y.z -m "..."` → push（**tag 推送后不要改写**）→ 需要时在 GitHub 为该 tag 建 Release（说明用 CHANGELOG 对应段落）。
+- **构建入口**：用根 `pnpm build`（先校验再递归构建）；直接 `pnpm -r build` 会跳过版本门禁。
+- **术语**：`v1 / v2…` 是产品功能阶段名（README/注释里的惯用法）；**发布号**是 semver `vX.Y.Z`、与 git tag 一一对应，首个为 `v0.1.0`。两者不要混用。当前发布线为 `0.x`（不承诺 API 稳定）。
+- **别联动**：数据库 `PRAGMA user_version`（当前 1）是 schema 迁移版本，与应用版本无关。
+
 ## 测试与验收门禁（Definition of Done）
 
 1. `pnpm -r test` → **62 passed**（shared 3 / server 57 / web 2）
 2. `pnpm -r typecheck` → 全 Done
 3. `node scripts/make-fixtures.mjs && CI=1 pnpm test:e2e` → **3 passed**
-4. 改动涉及 Docker/README 时：`docker compose config --quiet` + 冒烟（`/api/health` → `{"ok":true}`）
+4. 改动涉及 Docker/README 时：`docker compose config --quiet` + 冒烟（`/api/health` → `{"ok":true,"version":"..."}`；`docker compose logs` 启动行含版本号）
 
 工作方式：**TDD**（先补/改 `*.test.ts` 看到红 → 最小实现 → 绿 → commit）；提交信息用 conventional commits（`feat|fix|test|chore|docs(scope): ...`）。
 
 ## data-testid 是 E2E 契约（不得改名）
 
-全表见计划附录 C。按页面速查：`login-*`、`register-*`、`upload-button|admin-link|theme-toggle|logout-button|empty-state`、`book-card|cover-img|progress-bar`、`upload-dialog|upload-input|upload-status`、`reader-title|back-to-library`、`toc-button|toc-panel|toc-item|reader-theme-toggle|progress-text`、`epub-prev|epub-next|font-increase|font-decrease`、`page-prev|page-next|page-input|pdf-viewer`、`invite-generate|invite-code|user-row|reset-start|reset-input|reset-submit|admin-message`。
+全表见计划附录 C。按页面速查：`login-*`、`app-version`（登录页页脚版本号）、`register-*`、`upload-button|admin-link|theme-toggle|logout-button|empty-state`、`book-card|cover-img|progress-bar`、`upload-dialog|upload-input|upload-status`、`reader-title|back-to-library`、`toc-button|toc-panel|toc-item|reader-theme-toggle|progress-text`、`epub-prev|epub-next|font-increase|font-decrease`、`page-prev|page-next|page-input|pdf-viewer`、`invite-generate|invite-code|user-row|reset-start|reset-input|reset-submit|admin-message`。
 
 新增可交互 UI：同步加 testid；若 E2E 该走的新路径重要，在 `e2e/journey.spec.ts` 加断言。
 
