@@ -1489,7 +1489,7 @@ test('无效邀请码 → 400 invalid_invite', async () => {
   const reg = await app.request('/api/auth/register', json({ username: 'boss', password: 'password123' }))
   const bossId = ((await reg.json()) as { user: { id: string } }).user.id
   db.prepare(`INSERT INTO invites (code, created_by, created_at) VALUES ('good',?,1)`).run(bossId)
-  const res = await app.request('/api/auth/register', json({ username: 'alice', password: 'password123', inviteCode: 'bad' }))
+  const res = await app.request('/api/auth/register', json({ username: 'alice', password: 'password123', inviteCode: 'badcode' }))
   expect(res.status).toBe(400)
   expect(await res.json()).toEqual({ error: 'invalid_invite' })
 })
@@ -1558,6 +1558,10 @@ export function authRoutes(opts: AppOptions, loginLimiter: (key: string) => bool
 
     const { n } = db.prepare('SELECT COUNT(*) AS n FROM users').get() as { n: number }
     const isFirst = n === 0
+    // 用户名冲突优先于邀请码校验：重复用户直接 409（与测试用例约定一致）
+    if (db.prepare('SELECT id FROM users WHERE username = ?').get(username)) {
+      return c.json({ error: 'username_taken' }, 409)
+    }
     let inviteCodeToConsume: string | null = null
     if (!isFirst) {
       if (!inviteCode) return c.json({ error: 'invite_required' }, 400)
@@ -1565,10 +1569,6 @@ export function authRoutes(opts: AppOptions, loginLimiter: (key: string) => bool
       if (!invite) return c.json({ error: 'invalid_invite' }, 400)
       inviteCodeToConsume = inviteCode
     }
-    if (db.prepare('SELECT id FROM users WHERE username = ?').get(username)) {
-      return c.json({ error: 'username_taken' }, 409)
-    }
-
     const user: UserRow = {
       id: newId(),
       username,
