@@ -1,5 +1,7 @@
 # OnlineLearningLab
 
+[![CI](https://github.com/Bingo888-Lab/OnlineLearningLab/actions/workflows/ci.yml/badge.svg)](https://github.com/Bingo888-Lab/OnlineLearningLab/actions/workflows/ci.yml)
+
 自托管在线学习平台（版本号与发布历史见 [CHANGELOG](CHANGELOG.md)）：管理员上传 EPUB/PDF，登录用户在线阅读，进度自动保存。
 
 ## 本地开发
