@@ -148,7 +148,23 @@ export function bookRoutes(opts: AppOptions): Hono<AppEnv> {
     })
   })
 
-  // T18~T19 将在此文件继续追加：GET /:id/cover、DELETE /:id、PUT /:id/progress
+  r.put('/:id/progress', requireAuth(db), async (c) => {
+    const parsed = progressSchema.safeParse(await c.req.json().catch(() => null))
+    if (!parsed.success) return c.json({ error: 'invalid_input' }, 400)
+    const id = c.req.param('id') ?? ''
+    if (!db.prepare('SELECT id FROM books WHERE id = ?').get(id)) {
+      return c.json({ error: 'not_found' }, 404)
+    }
+    const user = c.get('user') as UserRow
+    db.prepare(`
+      INSERT INTO progress (user_id, book_id, locator, percent, updated_at) VALUES (?,?,?,?,?)
+      ON CONFLICT(user_id, book_id) DO UPDATE SET
+        locator = excluded.locator, percent = excluded.percent, updated_at = excluded.updated_at
+    `).run(user.id, id, parsed.data.locator, parsed.data.percent, Date.now())
+    return c.body(null, 204)
+  })
+
+  // T19 将在此文件继续追加：GET /:id/cover、DELETE /:id
 
   return r
 }

@@ -214,3 +214,62 @@ test('文件流：未登录 401；不存在 404', async () => {
   const admin = await registerUser(ctx, 'boss')
   expect((await ctx.app.request('/api/books/x/file', { headers: admin.headers })).status).toBe(404)
 })
+
+test('进度：PUT 后列表与详情都带进度；重复 PUT 覆盖', async () => {
+  const ctx = makeTestApp()
+  const admin = await registerUser(ctx, 'boss')
+  const up = await ctx.app.request('/api/books', { method: 'POST', body: pdfFormData('p.pdf'), headers: admin.headers })
+  const { book } = (await up.json()) as { book: { id: string } }
+  const put = await ctx.app.request(`/api/books/${book.id}/progress`, {
+    method: 'PUT',
+    headers: { ...admin.headers, 'content-type': 'application/json' },
+    body: JSON.stringify({ locator: '3', percent: 60 }),
+  })
+  expect(put.status).toBe(204)
+  const detail = await ctx.app.request(`/api/books/${book.id}`, { headers: admin.headers })
+  const detailBody = (await detail.json()) as { book: { progress: { locator: string; percent: number } } }
+  expect(detailBody.book.progress).toEqual({ locator: '3', percent: 60 })
+  await ctx.app.request(`/api/books/${book.id}/progress`, {
+    method: 'PUT',
+    headers: { ...admin.headers, 'content-type': 'application/json' },
+    body: JSON.stringify({ locator: '9', percent: 100 }),
+  })
+  const list = await ctx.app.request('/api/books', { headers: admin.headers })
+  const listBody = (await list.json()) as { books: { progress: { locator: string } }[] }
+  expect(listBody.books[0].progress.locator).toBe('9')
+})
+
+test('进度：跨用户隔离', async () => {
+  const ctx = makeTestApp()
+  const admin = await registerUser(ctx, 'boss')
+  const learner = await createLearner(ctx, admin, 'alice')
+  const up = await ctx.app.request('/api/books', { method: 'POST', body: pdfFormData('p.pdf'), headers: admin.headers })
+  const { book } = (await up.json()) as { book: { id: string } }
+  await ctx.app.request(`/api/books/${book.id}/progress`, {
+    method: 'PUT',
+    headers: { ...admin.headers, 'content-type': 'application/json' },
+    body: JSON.stringify({ locator: '2', percent: 20 }),
+  })
+  const learnerList = await ctx.app.request('/api/books', { headers: learner.headers })
+  const body = (await learnerList.json()) as { books: { progress: unknown }[] }
+  expect(body.books[0].progress).toBe(null)
+})
+
+test('进度：非法输入 400；不存在的书 404', async () => {
+  const ctx = makeTestApp()
+  const admin = await registerUser(ctx, 'boss')
+  const up = await ctx.app.request('/api/books', { method: 'POST', body: pdfFormData('p.pdf'), headers: admin.headers })
+  const { book } = (await up.json()) as { book: { id: string } }
+  const bad = await ctx.app.request(`/api/books/${book.id}/progress`, {
+    method: 'PUT',
+    headers: { ...admin.headers, 'content-type': 'application/json' },
+    body: JSON.stringify({ locator: '', percent: 150 }),
+  })
+  expect(bad.status).toBe(400)
+  const missing = await ctx.app.request('/api/books/ghost/progress', {
+    method: 'PUT',
+    headers: { ...admin.headers, 'content-type': 'application/json' },
+    body: JSON.stringify({ locator: '1', percent: 1 }),
+  })
+  expect(missing.status).toBe(404)
+})
