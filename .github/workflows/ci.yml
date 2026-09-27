@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # 同一 ref 上后来的 run 取消先前的（避免堆积）
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # 等价 AGENTS.md DoD 1–2：版本门禁 + 三包构建 + 类型检查 + 单元/接口测试
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26
+          cache: pnpm
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+      - name: 版本门禁 + 三包构建
+        run: pnpm build
+      - name: 类型检查
+        run: pnpm -r typecheck
+      - name: 单元/接口测试
+        run: pnpm -r test
+
+  # 等价 AGENTS.md DoD 3：Playwright E2E
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26
+          cache: pnpm
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+      - name: 构建 shared（server/web 经 dist 消费，见 AGENTS.md 已知坑 1）
+        run: pnpm --filter @oll/shared build
+      - name: 安装 Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: 生成 E2E fixtures
+        run: node scripts/make-fixtures.mjs
+      - name: 运行 E2E
+        run: CI=1 pnpm test:e2e
+      - name: 上传失败现场
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-failure-artifacts
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # 等价 AGENTS.md DoD 4 与「运维 · 冒烟验证」：Docker 部署路径
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: compose 配置校验
+        run: docker compose config --quiet
+      - name: 构建镜像并启动
+        run: docker compose up -d --build
+      - name: 冒烟 /api/health
+        run: curl -fsS --retry 20 --retry-all-errors --retry-delay 3 http://localhost:3000/api/health | grep -F '"ok":true'
+      - name: 容器日志（失败时定位用）
+        if: failure()
+        run: docker compose logs --tail=100
+      - name: 清理容器
+        if: always()
+        run: docker compose down --remove-orphans
