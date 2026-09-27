@@ -3,4 +3,6 @@ packages:
   - server
   - web
 allowBuilds:
-  esbuild: set this to true or false
+  esbuild: true
+  core-js: false
+  es5-ext: false
