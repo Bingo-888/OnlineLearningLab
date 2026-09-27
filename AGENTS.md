@@ -91,6 +91,8 @@ CI=1 pnpm test:e2e              # 预期：3 passed（CI=1 强制 Playwright 自
 3. `node scripts/make-fixtures.mjs && CI=1 pnpm test:e2e` → **3 passed**
 4. 改动涉及 Docker/README 时：`docker compose config --quiet` + 冒烟（步骤见「运维」）
 
+CI（`.github/workflows/ci.yml`）：push/PR→main 自动跑三个 job——`checks`（`pnpm build` 版本门禁 + 三包构建、`-r typecheck`、`-r test`）、`e2e`（构建 shared + fixtures + Playwright）、`docker`（compose 构建 + `/api/health` 冒烟），即上面 1–4 的自动化版；三个 job 已设为 main 的必需检查（PR 合并前必须全绿；直接 push 不受限）。job id 与分支保护检查名绑定，改名须同步更新分支保护配置与本条说明。
+
 ### 运维
 
 部署与运行（Docker Compose 一条命令）：
