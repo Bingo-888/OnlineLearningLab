@@ -4,6 +4,7 @@ import { serve } from '@hono/node-server'
 import { createApp } from './app.js'
 import { openDb } from './db.js'
 import { ensureDataDirs } from './files.js'
+import { VERSION } from './version.js'
 
 try {
   process.loadEnvFile()
@@ -23,5 +24,5 @@ const db = openDb(resolve(dataDir, 'db.sqlite'))
 const app = createApp({ db, dataDir, maxUploadMb, cookieSecure, webRoot })
 
 serve({ fetch: app.fetch, port }, (info) => {
-  console.log(`[oll] listening on http://localhost:${info.port} | dataDir=${dataDir} | webRoot=${webRoot ?? '(dev: 由 Vite 提供)'}`)
+  console.log(`[oll] v${VERSION} listening on http://localhost:${info.port} | dataDir=${dataDir} | webRoot=${webRoot ?? '(dev: 由 Vite 提供)'}`)
 })

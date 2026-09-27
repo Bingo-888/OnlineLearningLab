@@ -6,6 +6,7 @@ import { authRoutes } from './routes/auth.js'
 import { adminRoutes } from './routes/admin.js'
 import { bookRoutes } from './routes/books.js'
 import { makeRateLimiter } from './auth.js'
+import { VERSION } from './version.js'
 
 export type { AppEnv } from './types.js'
 
@@ -19,7 +20,7 @@ export interface AppOptions {
 
 export function createApp(opts: AppOptions): Hono<AppEnv> {
   const app = new Hono<AppEnv>()
-  app.get('/api/health', (c) => c.json({ ok: true }))
+  app.get('/api/health', (c) => c.json({ ok: true, version: VERSION }))
   const loginLimiter = makeRateLimiter({ limit: 10, windowMs: 10 * 60_000 })
   app.route('/api/auth', authRoutes(opts, loginLimiter))
   app.route('/api/books', bookRoutes(opts))
