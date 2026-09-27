@@ -1,0 +1,12 @@
+node_modules/
+dist/
+data/
+server/data/
+server/.env
+.env
+e2e/.data/
+e2e/.fixtures/
+playwright-report/
+test-results/
+*.local
+.DS_Store
