@@ -1,0 +1,12 @@
+node_modules
+**/node_modules
+**/dist
+data
+server/data
+e2e
+.hermes
+.git
+.gitignore
+playwright-report
+test-results
+*.log
