@@ -3,7 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "packageManager": "pnpm@12.5.1",
   "scripts": {
     "dev": "pnpm -r --parallel dev",
@@ -11,5 +13,10 @@
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "jszip": "^3.10.2",
+    "pdf-lib": "^1.17.1"
   }
 }
