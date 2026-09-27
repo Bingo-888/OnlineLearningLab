@@ -55,6 +55,18 @@ export function EpubReader({ url, initialLocator, onProgress }: Props) {
       .then(() => book.locations.generate(1600))
       .then(() => {
         locationsReadyRef.current = true
+        // 首帧 relocated 早于位置表就绪（percent 会算成 0）；表就绪后按当前 CFI 重算并回传一次，
+        // 否则书架进度条在首次翻页前一直显示 0%
+        const current = renditionRef.current?.currentLocation() as any
+        const cfi: string | undefined = current?.start?.cfi
+        if (cfi) {
+          const raw = book.locations.percentageFromCfi(cfi)
+          if (raw != null) {
+            const pct = Math.round(raw * 100)
+            setPercent(pct)
+            onProgressRef.current(cfi, pct)
+          }
+        }
       })
       .catch(() => {
         // 位置表生成失败：进度将回退为 0%，阅读不受影响
