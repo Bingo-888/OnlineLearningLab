@@ -107,17 +107,48 @@ export function bookRoutes(opts: AppOptions): Hono<AppEnv> {
 
   r.get('/:id', requireAuth(db), (c) => {
     const user = c.get('user') as UserRow
+    const id = c.req.param('id') ?? ''
     const row = db.prepare(`
       SELECT b.*, p.locator AS progress_locator, p.percent AS progress_percent
       FROM books b
       LEFT JOIN progress p ON p.book_id = b.id AND p.user_id = ?
       WHERE b.id = ?
-    `).get(user.id, c.req.param('id')) as unknown as BookRowWithProgress | undefined
+    `).get(user.id, id) as unknown as BookRowWithProgress | undefined
     if (!row) return c.json({ error: 'not_found' }, 404)
     return c.json({ book: toBookDto(row) })
   })
 
-  // T16~T19 将在此文件继续追加：GET /:id/file、GET /:id/cover、DELETE /:id、PUT /:id/progress
+  r.get('/:id/file', requireAuth(db), (c) => {
+    const row = db.prepare('SELECT * FROM books WHERE id = ?').get(c.req.param('id') ?? '') as BookRow | undefined
+    if (!row) return c.json({ error: 'not_found' }, 404)
+    const abs = join(dataDir, row.storage_path)
+    if (!existsSync(abs)) return c.json({ error: 'not_found' }, 404)
+    const size = statSync(abs).size
+    const headers: Record<string, string> = {
+      'content-type': CONTENT_TYPES[row.format],
+      'accept-ranges': 'bytes',
+      'cache-control': 'private, max-age=0',
+    }
+    const range = parseRange(c.req.header('range') ?? null, size)
+    if (range === 'invalid') {
+      return c.body(null, 416, { 'content-range': `bytes */${size}` })
+    }
+    if (range) {
+      const stream = createReadStream(abs, { start: range.start, end: range.end })
+      return c.body(Readable.toWeb(stream) as ReadableStream, 206, {
+        ...headers,
+        'content-range': `bytes ${range.start}-${range.end}/${size}`,
+        'content-length': String(range.end - range.start + 1),
+      })
+    }
+    const stream = createReadStream(abs)
+    return c.body(Readable.toWeb(stream) as ReadableStream, 200, {
+      ...headers,
+      'content-length': String(size),
+    })
+  })
+
+  // T18~T19 将在此文件继续追加：GET /:id/cover、DELETE /:id、PUT /:id/progress
 
   return r
 }

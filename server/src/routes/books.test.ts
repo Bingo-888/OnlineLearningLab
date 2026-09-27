@@ -5,7 +5,7 @@ import { makeTestApp, registerUser, createLearner } from '../test-helpers.js'
 
 const PDF = new TextEncoder().encode('%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n')
 
-export function pdfFormData(name = 'book.pdf', bytes: Uint8Array = PDF, extra: Record<string, string | File> = {}) {
+export function pdfFormData(name = 'book.pdf', bytes: Uint8Array<ArrayBuffer> = PDF, extra: Record<string, string | File> = {}) {
   const fd = new FormData()
   fd.set('file', new File([bytes], name, { type: 'application/pdf' }))
   for (const [k, v] of Object.entries(extra)) fd.set(k, v)
@@ -156,4 +156,61 @@ test('详情：存在 200；不存在 404', async () => {
   expect(ok.status).toBe(200)
   const missing = await ctx.app.request('/api/books/no-such-id', { headers: admin.headers })
   expect(missing.status).toBe(404)
+})
+
+const RANGE_CONTENT = new TextEncoder().encode('%PDF-1.4 abcdefghijklmnopqrstuvwxyz 0123456789')
+
+test('文件流：无 Range → 200 全量 + content-type', async () => {
+  const ctx = makeTestApp()
+  const admin = await registerUser(ctx, 'boss')
+  const up = await ctx.app.request('/api/books', {
+    method: 'POST',
+    body: pdfFormData('r.pdf', RANGE_CONTENT),
+    headers: admin.headers,
+  })
+  const { book } = (await up.json()) as { book: { id: string } }
+  const res = await ctx.app.request(`/api/books/${book.id}/file`, { headers: admin.headers })
+  expect(res.status).toBe(200)
+  expect(res.headers.get('content-type')).toBe('application/pdf')
+  expect(res.headers.get('accept-ranges')).toBe('bytes')
+  expect((await res.arrayBuffer()).byteLength).toBe(RANGE_CONTENT.length)
+})
+
+test('文件流：Range 206 返回正确切片与 content-range', async () => {
+  const ctx = makeTestApp()
+  const admin = await registerUser(ctx, 'boss')
+  const up = await ctx.app.request('/api/books', {
+    method: 'POST',
+    body: pdfFormData('r.pdf', RANGE_CONTENT),
+    headers: admin.headers,
+  })
+  const { book } = (await up.json()) as { book: { id: string } }
+  const res = await ctx.app.request(`/api/books/${book.id}/file`, {
+    headers: { ...admin.headers, range: 'bytes=0-3' },
+  })
+  expect(res.status).toBe(206)
+  expect(res.headers.get('content-range')).toBe(`bytes 0-3/${RANGE_CONTENT.length}`)
+  expect(await res.text()).toBe('%PDF')
+})
+
+test('文件流：非法 Range → 416', async () => {
+  const ctx = makeTestApp()
+  const admin = await registerUser(ctx, 'boss')
+  const up = await ctx.app.request('/api/books', {
+    method: 'POST',
+    body: pdfFormData('r.pdf', RANGE_CONTENT),
+    headers: admin.headers,
+  })
+  const { book } = (await up.json()) as { book: { id: string } }
+  const res = await ctx.app.request(`/api/books/${book.id}/file`, {
+    headers: { ...admin.headers, range: 'bytes=99999-100000' },
+  })
+  expect(res.status).toBe(416)
+})
+
+test('文件流：未登录 401；不存在 404', async () => {
+  const ctx = makeTestApp()
+  expect((await ctx.app.request('/api/books/x/file')).status).toBe(401)
+  const admin = await registerUser(ctx, 'boss')
+  expect((await ctx.app.request('/api/books/x/file', { headers: admin.headers })).status).toBe(404)
 })

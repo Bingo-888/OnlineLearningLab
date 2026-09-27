@@ -30,12 +30,13 @@ export function adminRoutes(opts: AppOptions): Hono<AppEnv> {
   r.post('/users/:id/password', requireAdmin(db), async (c) => {
     const parsed = resetPasswordSchema.safeParse(await c.req.json().catch(() => null))
     if (!parsed.success) return c.json({ error: 'invalid_input' }, 400)
-    const target = db.prepare('SELECT id FROM users WHERE id = ?').get(c.req.param('id'))
+    const targetId = c.req.param('id') ?? ''
+    const target = db.prepare('SELECT id FROM users WHERE id = ?').get(targetId)
     if (!target) return c.json({ error: 'not_found' }, 404)
     withTx(db, () => {
       db.prepare('UPDATE users SET password_hash = ? WHERE id = ?')
-        .run(hashPassword(parsed.data.newPassword), c.req.param('id'))
-      deleteUserSessions(db, c.req.param('id'))
+        .run(hashPassword(parsed.data.newPassword), targetId)
+      deleteUserSessions(db, targetId)
     })
     return c.body(null, 204)
   })
