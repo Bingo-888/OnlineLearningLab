@@ -28,7 +28,7 @@ export function LibraryPage() {
 
   function toggleTheme() {
     applyTheme(theme === 'dark' ? 'light' : 'dark')
-    navigate(0) // 简单粗暴地重挂载以刷新主题渲染；v1 可接受
+    navigate(0) // 简单粗暴地重挂载以刷新主题渲染；当前可接受
   }
 
   return (

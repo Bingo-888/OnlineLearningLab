@@ -45,7 +45,7 @@ export function PdfReader({ url, initialLocator, onProgress }: Props) {
     if (numPages > 0) onProgressRef.current(String(page), Math.round((page / numPages) * 100))
   }, [page, numPages])
 
-  // 主题切换对「整页图片」不适用（v1 有意不做 canvas 反色）；此处只作用于外围 UI 与工具栏
+  // 主题切换对「整页图片」不适用（有意不做 canvas 反色）；此处只作用于外围 UI 与工具栏
   useEffect(() => {
     applyTheme(theme)
   }, [theme])
