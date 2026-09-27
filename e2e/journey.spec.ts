@@ -1,14 +1,18 @@
 import { test, expect } from '@playwright/test'
 import path from 'node:path'
+import { readFileSync } from 'node:fs'
 
 test.describe.configure({ mode: 'serial' }) // 三个场景共享同一后端数据，顺序执行
 
 const FIXTURE_PDF = path.resolve('e2e/.fixtures/test.pdf')
 const FIXTURE_EPUB = path.resolve('e2e/.fixtures/test.epub')
 const ADMIN = { username: 'e2eadmin', password: 'e2epassword' }
+// 期望值读根 package.json（版本单一事实来源）：登录页页脚展示的版本必须与其一致
+const APP_VERSION = (JSON.parse(readFileSync(path.resolve('package.json'), 'utf8')) as { version: string }).version
 
 async function login(page: import('@playwright/test').Page) {
   await page.goto('/login')
+  await expect(page.getByTestId('app-version')).toContainText(`v${APP_VERSION}`)
   await page.getByTestId('login-username').fill(ADMIN.username)
   await page.getByTestId('login-password').fill(ADMIN.password)
   await page.getByTestId('login-submit').click()
