@@ -273,3 +273,40 @@ test('进度：非法输入 400；不存在的书 404', async () => {
   })
   expect(missing.status).toBe(404)
 })
+
+test('封面：有封面 200 + content-type；无封面 404 no_cover', async () => {
+  const ctx = makeTestApp()
+  const admin = await registerUser(ctx, 'boss')
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+  const up = await ctx.app.request('/api/books', {
+    method: 'POST',
+    body: pdfFormData('c.pdf', PDF, { cover: new File([png], 'c.png', { type: 'image/png' }) }),
+    headers: admin.headers,
+  })
+  const { book } = (await up.json()) as { book: { id: string } }
+  const res = await ctx.app.request(`/api/books/${book.id}/cover`, { headers: admin.headers })
+  expect(res.status).toBe(200)
+  expect(res.headers.get('content-type')).toBe('image/png')
+  expect(res.headers.get('cache-control')).toContain('max-age=86400')
+  expect((await res.arrayBuffer()).byteLength).toBe(png.length)
+
+  const up2 = await ctx.app.request('/api/books', { method: 'POST', body: pdfFormData('nc.pdf'), headers: admin.headers })
+  const { book: book2 } = (await up2.json()) as { book: { id: string } }
+  const noCover = await ctx.app.request(`/api/books/${book2.id}/cover`, { headers: admin.headers })
+  expect(noCover.status).toBe(404)
+  expect(await noCover.json()).toEqual({ error: 'no_cover' })
+})
+
+test('删除：admin 204 且文件与行都消失；learner 403；不存在 404', async () => {
+  const ctx = makeTestApp()
+  const admin = await registerUser(ctx, 'boss')
+  const learner = await createLearner(ctx, admin, 'alice')
+  const up = await ctx.app.request('/api/books', { method: 'POST', body: pdfFormData('d.pdf'), headers: admin.headers })
+  const { book } = (await up.json()) as { book: { id: string } }
+  expect((await ctx.app.request(`/api/books/${book.id}`, { method: 'DELETE', headers: learner.headers })).status).toBe(403)
+  const del = await ctx.app.request(`/api/books/${book.id}`, { method: 'DELETE', headers: admin.headers })
+  expect(del.status).toBe(204)
+  expect(existsSync(join(ctx.dataDir, 'books', `${book.id}.pdf`))).toBe(false)
+  expect((await ctx.app.request(`/api/books/${book.id}`, { headers: admin.headers })).status).toBe(404)
+  expect((await ctx.app.request(`/api/books/${book.id}`, { method: 'DELETE', headers: admin.headers })).status).toBe(404)
+})

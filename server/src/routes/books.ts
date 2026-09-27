@@ -164,7 +164,28 @@ export function bookRoutes(opts: AppOptions): Hono<AppEnv> {
     return c.body(null, 204)
   })
 
-  // T19 将在此文件继续追加：GET /:id/cover、DELETE /:id
+  r.get('/:id/cover', requireAuth(db), (c) => {
+    const row = db.prepare('SELECT cover_path FROM books WHERE id = ?').get(c.req.param('id') ?? '') as
+      | { cover_path: string | null }
+      | undefined
+    if (!row?.cover_path) return c.json({ error: 'no_cover' }, 404)
+    const abs = join(dataDir, row.cover_path)
+    if (!existsSync(abs)) return c.json({ error: 'no_cover' }, 404)
+    const ext = row.cover_path.split('.').pop() as keyof typeof CONTENT_TYPES
+    return c.body(new Uint8Array(readFileSync(abs)), 200, {
+      'content-type': CONTENT_TYPES[ext],
+      'cache-control': 'public, max-age=86400',
+    })
+  })
+
+  r.delete('/:id', requireAdmin(db), (c) => {
+    const row = db.prepare('SELECT * FROM books WHERE id = ?').get(c.req.param('id') ?? '') as BookRow | undefined
+    if (!row) return c.json({ error: 'not_found' }, 404)
+    db.prepare('DELETE FROM books WHERE id = ?').run(row.id) // progress 级联删除（FK ON）
+    rmSync(join(dataDir, row.storage_path), { force: true })
+    if (row.cover_path) rmSync(join(dataDir, row.cover_path), { force: true })
+    return c.body(null, 204)
+  })
 
   return r
 }
