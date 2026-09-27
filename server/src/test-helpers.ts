@@ -36,3 +36,10 @@ export async function registerUser(
   const body = (await res.json()) as { user: { id: string; role: string } }
   return { headers: { cookie: `oll_session=${token}` }, user: body.user }
 }
+
+/** 管理员生成邀请码后注册学员（依赖 /api/admin/invites，见 T17） */
+export async function createLearner(ctx: TestCtx, admin: { headers: { cookie: string } }, username: string) {
+  const inv = await ctx.app.request('/api/admin/invites', { method: 'POST', headers: admin.headers })
+  const code = ((await inv.json()) as { invite: { code: string } }).invite.code
+  return registerUser(ctx, username, 'password123', code)
+}
