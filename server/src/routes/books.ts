@@ -93,7 +93,31 @@ export function bookRoutes(opts: AppOptions): Hono<AppEnv> {
     return c.json({ book }, 201)
   })
 
-  // T14~T18 将在此文件继续追加：GET /、GET /:id、GET /:id/file、GET /:id/cover、DELETE /:id、PUT /:id/progress
+  r.get('/', requireAuth(db), (c) => {
+    const user = c.get('user') as UserRow
+    const rows = db.prepare(`
+      SELECT b.*, p.locator AS progress_locator, p.percent AS progress_percent
+      FROM books b
+      LEFT JOIN progress p ON p.book_id = b.id AND p.user_id = ?
+      WHERE b.visibility = 'public'
+      ORDER BY b.uploaded_at DESC, b.rowid DESC
+    `).all(user.id) as unknown as BookRowWithProgress[]
+    return c.json({ books: rows.map(toBookDto) })
+  })
+
+  r.get('/:id', requireAuth(db), (c) => {
+    const user = c.get('user') as UserRow
+    const row = db.prepare(`
+      SELECT b.*, p.locator AS progress_locator, p.percent AS progress_percent
+      FROM books b
+      LEFT JOIN progress p ON p.book_id = b.id AND p.user_id = ?
+      WHERE b.id = ?
+    `).get(user.id, c.req.param('id')) as unknown as BookRowWithProgress | undefined
+    if (!row) return c.json({ error: 'not_found' }, 404)
+    return c.json({ book: toBookDto(row) })
+  })
+
+  // T16~T19 将在此文件继续追加：GET /:id/file、GET /:id/cover、DELETE /:id、PUT /:id/progress
 
   return r
 }

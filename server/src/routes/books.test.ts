@@ -121,3 +121,39 @@ test('非法封面（伪造 content-type）→ 415 unsupported_cover', async () 
   })
   expect(res.status).toBe(415)
 })
+
+const uploadPdf = (ctx: ReturnType<typeof makeTestApp>, headers: { cookie: string }, title?: string) =>
+  ctx.app.request('/api/books', {
+    method: 'POST',
+    body: pdfFormData('a.pdf', PDF, title ? { title } : {}),
+    headers,
+  })
+
+test('登录用户看列表：按上传时间倒序，含自己的进度', async () => {
+  const ctx = makeTestApp()
+  const admin = await registerUser(ctx, 'boss')
+  await uploadPdf(ctx, admin.headers, '第一本')
+  await uploadPdf(ctx, admin.headers, '第二本')
+  const res = await ctx.app.request('/api/books', { headers: admin.headers })
+  expect(res.status).toBe(200)
+  const { books } = (await res.json()) as { books: { title: string; progress: unknown }[] }
+  expect(books.map((b) => b.title)).toEqual(['第二本', '第一本'])
+  expect(books[0].progress).toBe(null)
+})
+
+test('未登录看列表 → 401', async () => {
+  const ctx = makeTestApp()
+  const res = await ctx.app.request('/api/books')
+  expect(res.status).toBe(401)
+})
+
+test('详情：存在 200；不存在 404', async () => {
+  const ctx = makeTestApp()
+  const admin = await registerUser(ctx, 'boss')
+  const up = await uploadPdf(ctx, admin.headers)
+  const { book } = (await up.json()) as { book: { id: string } }
+  const ok = await ctx.app.request(`/api/books/${book.id}`, { headers: admin.headers })
+  expect(ok.status).toBe(200)
+  const missing = await ctx.app.request('/api/books/no-such-id', { headers: admin.headers })
+  expect(missing.status).toBe(404)
+})
