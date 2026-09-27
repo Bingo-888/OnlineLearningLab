@@ -1,0 +1,107 @@
+name: Publish image
+
+# 触发：打 v* tag 推送自动发布；workflow_dispatch 用于演练与补发。
+# 补发（含 cut 于本流程之前的 tag——其提交内没有本文件，--ref 会被 GitHub 拒绝）：
+#   gh workflow run publish-image.yml --ref main -f dry_run=false -f release_tag=vX.Y.Z [-f set_latest=true]
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 只构建验证、不推送到 ghcr.io
+        type: boolean
+        default: true
+      set_latest:
+        description: 手动补发时同时更新 latest 标签（仅补发最新版本时勾选）
+        type: boolean
+        default: false
+      release_tag:
+        description: 补发模式：要发布的历史 tag（如 v0.1.0）；留空 = 按触发 ref 正常走
+        type: string
+        default: ''
+
+concurrency:
+  # 刻意不 cancel-in-progress：发布不能被后续 run 掐断
+  group: publish-image-${{ github.ref }}
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write      # 推送 ghcr.io
+      attestations: write  # actions/attest 写入制品证明
+      id-token: write      # actions/attest 用 OIDC 签名
+    env:
+      REGISTRY: ghcr.io
+      # 必须全小写（镜像引用硬性要求）：${{ github.repository }} 含大写，不能直接用
+      IMAGE_NAME: bingo888-lab/onlinelearninglab
+    steps:
+      - name: Checkout 仓库
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # 补发模式下检出目标 tag 的代码（workflow 本体仍来自默认分支）
+          ref: ${{ inputs.release_tag || github.ref }}
+      - name: 解析补发版本与短哈希
+        id: rel
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          echo "short_sha=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+          VER="placeholder"
+          MM="placeholder"
+          if [ -n "$RELEASE_TAG" ]; then
+            VER="${RELEASE_TAG#v}"
+            MM="${VER%.*}"
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "major_minor=$MM" >> "$GITHUB_OUTPUT"
+      - name: 断言发布 tag 与 package.json 版本一致
+        if: startsWith(github.ref, 'refs/tags/') || inputs.release_tag != ''
+        env:
+          REL_TAG_NAME: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          node -e "const fs=require('fs');const v=JSON.parse(fs.readFileSync('package.json','utf8')).version;const t=process.env.REL_TAG_NAME.replace(/^v/,'');if(t!==v){console.error('[publish] git tag v'+t+' 与 package.json 版本 '+v+' 不一致');process.exit(1)}console.log('[publish] tag 与版本一致：'+v)"
+      - name: 登录 ghcr.io
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: 生成镜像标签
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}},enable=${{ github.ref_type == 'tag' }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ github.ref_type == 'tag' }}
+            type=raw,value=latest,enable=${{ inputs.set_latest == true || (github.ref_type == 'tag' && github.event_name == 'push') }}
+            type=raw,value=${{ steps.rel.outputs.version }},enable=${{ github.ref_type != 'tag' && inputs.release_tag != '' }}
+            type=raw,value=${{ steps.rel.outputs.major_minor }},enable=${{ github.ref_type != 'tag' && inputs.release_tag != '' }}
+            type=raw,value=sha-${{ steps.rel.outputs.short_sha }},enable=${{ github.ref_type != 'tag' && inputs.release_tag != '' }}
+            type=sha,format=short,enable=${{ inputs.release_tag == '' }}
+      - name: 构建并推送镜像
+        id: push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: ${{ github.event_name == 'push' || inputs.dry_run == false }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+      - name: 生成制品证明（attestation）
+        if: (github.event_name == 'push' || inputs.dry_run == false) && steps.push.outputs.digest != ''
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+      - name: 汇总镜像标签
+        run: |
+          echo "本次解析标签："
+          echo "${{ steps.meta.outputs.tags }}"
