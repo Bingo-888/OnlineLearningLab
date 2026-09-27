@@ -9,10 +9,12 @@
   "packageManager": "pnpm@12.5.1",
   "scripts": {
     "dev": "pnpm -r --parallel dev",
-    "build": "pnpm -r build",
+    "build": "node scripts/check-version.mjs && pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "version:set": "node scripts/set-version.mjs",
+    "version:check": "node scripts/check-version.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

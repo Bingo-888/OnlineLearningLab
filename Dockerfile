@@ -10,7 +10,8 @@ COPY server/package.json server/
 COPY web/package.json web/
 RUN pnpm install --frozen-lockfile
 COPY . .
-RUN pnpm -r build
+# 走根 build 脚本：先执行 scripts/check-version.mjs（四个 package.json 版本一致 + CHANGELOG 条目）
+RUN pnpm build
 # pnpm deploy：把 @oll/server 及其生产依赖（含被注入的 @oll/shared）拷成独立可运行目录
 RUN pnpm deploy --filter=@oll/server --prod /out/server
 RUN mkdir -p /out/server/web-dist && cp -r web/dist/. /out/server/web-dist/
