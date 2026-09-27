@@ -27,7 +27,7 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex h-full items-center justify-center">
+    <div className="flex h-full flex-col items-center justify-center gap-6">
       <form onSubmit={onSubmit} className="w-80 space-y-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
         <h1 className="text-xl font-semibold">登录 · 在线学习平台</h1>
         <input
@@ -59,6 +59,9 @@ export function LoginPage() {
           没有账号？<Link className="text-blue-600 hover:underline" to="/register">注册</Link>
         </p>
       </form>
+      <p data-testid="app-version" className="text-xs text-gray-400 dark:text-gray-600">
+        在线学习平台 v{__APP_VERSION__}
+      </p>
     </div>
   )
 }
