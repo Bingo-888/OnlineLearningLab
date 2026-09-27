@@ -3,6 +3,7 @@ import { openDb } from './db.js'
 import {
   hashPassword, verifyPassword, sha256,
   createSession, getSessionUser, deleteSession, deleteUserSessions, SESSION_TTL_MS,
+  makeRateLimiter,
 } from './auth.js'
 
 function seedUser(db: ReturnType<typeof openDb>, id = 'u1') {
@@ -57,4 +58,15 @@ test('deleteUserSessions 清空该用户全部会话', () => {
   deleteUserSessions(db, uid)
   expect(getSessionUser(db, t1)).toBe(null)
   expect(getSessionUser(db, t2)).toBe(null)
+})
+
+test('限流器：超过 limit 拒绝，窗口滑过后恢复', () => {
+  let t = 1_000
+  const allow = makeRateLimiter({ limit: 2, windowMs: 1_000, now: () => t })
+  expect(allow('k')).toBe(true)
+  expect(allow('k')).toBe(true)
+  expect(allow('k')).toBe(false) // 第 3 次在窗口内 → 拒绝
+  t = 2_100 // 窗口滑过
+  expect(allow('k')).toBe(true)
+  expect(allow('other')).toBe(true) // 不同 key 独立计数
 })
