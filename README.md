@@ -1,6 +1,6 @@
 # OnlineLearningLab
 
-自托管在线学习平台（产品阶段 v1；版本号与发布历史见 [CHANGELOG](CHANGELOG.md)）：管理员上传 EPUB/PDF，登录用户在线阅读，进度自动保存。
+自托管在线学习平台（版本号与发布历史见 [CHANGELOG](CHANGELOG.md)）：管理员上传 EPUB/PDF，登录用户在线阅读，进度自动保存。
 
 ## 本地开发
 
@@ -35,7 +35,7 @@ docker compose up -d --build
 - 备份：`docker compose stop && tar czf oll-backup-$(date +%F).tgz data/ && docker compose start`
 - 恢复：停容器后把 `data/` 解回去再启动。
 
-公开到公网的建议（v1 不含，属于部署者职责）：在容器前面加一层 HTTPS 反向代理（如 Caddy），并把 `COOKIE_SECURE` 改为 `"true"`。
+公开到公网的建议（不内含，属于部署者职责）：在容器前面加一层 HTTPS 反向代理（如 Caddy），并把 `COOKIE_SECURE` 改为 `"true"`。
 
 已验证：2026-09-27 Docker Compose 冒烟通过。
 

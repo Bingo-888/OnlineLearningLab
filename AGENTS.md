@@ -5,7 +5,7 @@
 
 ## 项目概览
 
-自托管在线学习平台（产品阶段 **v1**，发布号与发布流程见「版本与发布」；首个 tag `v0.1.0`）：管理员上传 EPUB/PDF 进入公共书库，登录用户在线阅读，阅读进度自动保存；Docker Compose 一条命令部署。
+自托管在线学习平台（首个发布版本 `v0.1.0`；版本策略见「版本与发布」）：管理员上传 EPUB/PDF 进入公共书库，登录用户在线阅读，阅读进度自动保存；Docker Compose 一条命令部署。
 
 设计取舍：单进程 + SQLite（`node:sqlite` 同步 API）+ 零外部服务，面向个人/小团队自托管。
 
@@ -80,16 +80,17 @@ scripts/          # make-fixtures.mjs / reset-e2e-data.mjs / set-version.mjs / c
 ## 关键产品行为（改代码前必须知道）
 
 - **首个注册用户 = 管理员**；此后注册必须邀请码（管理页生成）。
-- **公共书库**：所有登录用户可读；仅 admin 可上传/删除（books 表已预留 `owner_id`/`visibility` 供 v2 私有书）。
+- **公共书库**：所有登录用户可读；仅 admin 可上传/删除（books 表已预留 `owner_id`/`visibility` 字段——仅为可能的权限扩展留余地，未做任何实现承诺）。
 - **注册路由校验顺序**：`username_taken`(409) 先于邀请码校验(400)——有意为之，测试锁定（`server/src/routes/auth.test.ts`）。
 - 密码 scrypt（N=16384）；会话存 `sha256(token)`；cookie HttpOnly + SameSite=Lax + 30 天；`COOKIE_SECURE=true` 仅用于 HTTPS 反代场景。
 
 ## 版本与发布
 
-- **单一事实来源 = 根 `package.json` 的 `version`**：四个 package.json（根 + shared/server/web）必须一致（子包均为私有包，随根版本走）。代码/文档里不硬编码版本号：服务端运行时读自身 `package.json`（`server/src/version.ts`；dev=`src/`、构建=`dist/`、Docker=`pnpm deploy` 产物三种布局下 `../package.json` 均有效），web 由 Vite `define` 注入 `__APP_VERSION__`（改版本号后需重启 dev server）。
+- **单一事实来源 = 根 `package.json` 的 `version`**：四个 package.json（根 + shared/server/web）必须一致（子包均为私有包，随根版本走）。代码/文档里不硬编码当前版本号（历史事实如「首个 tag `v0.1.0`」除外）：服务端运行时读自身 `package.json`（`server/src/version.ts`；dev=`src/`、构建=`dist/`、Docker=`pnpm deploy` 产物三种布局下 `../package.json` 均有效），web 由 Vite `define` 注入 `__APP_VERSION__`（改版本号后需重启 dev server）。
 - **升级/发布流程**：`pnpm version:set x.y.z`（同步四个 package.json）→ `CHANGELOG.md` 顶部补 `## [x.y.z] - YYYY-MM-DD` → `pnpm build` 自校验（`scripts/check-version.mjs`：版本一致 + CHANGELOG 有条目，失败即中断，Docker 构建同样经过）→ commit → `git tag -a vx.y.z -m "..."` → push（**tag 推送后不要改写**）→ 需要时在 GitHub 为该 tag 建 Release（说明用 CHANGELOG 对应段落）。
 - **构建入口**：用根 `pnpm build`（先校验再递归构建）；直接 `pnpm -r build` 会跳过版本门禁。
-- **术语**：`v1 / v2…` 是产品功能阶段名（README/注释里的惯用法）；**发布号**是 semver `vX.Y.Z`、与 git tag 一一对应，首个为 `v0.1.0`。两者不要混用。当前发布线为 `0.x`（不承诺 API 稳定）。
+- **只有一套版本号**：semver `vX.Y.Z`、与 git tag 一一对应，首个为 `v0.1.0`；不存在「v1/v2 产品阶段」之类的第二套叫法（旧表述已废止），凡需指版本一律用发布号。当前发布线为 `0.x`（不承诺 API 稳定）。
+- **禁止前瞻性版本承诺（红线）**：任何文档、注释、提交信息都不得写「v2 将加入 X」「X 是 v1.1 候选」这类把未做之事绑定到将来版本的表述。未做之事只陈述为「未决策/待评估」并写明理由与取舍；版本号只在发布时赋予已完成的工作（以 CHANGELOG 为准），避免对开发节奏形成隐性承诺。
 - **别联动**：数据库 `PRAGMA user_version`（当前 1）是 schema 迁移版本，与应用版本无关。
 
 ## 测试与验收门禁（Definition of Done）
@@ -119,7 +120,7 @@ scripts/          # make-fixtures.mjs / reset-e2e-data.mjs / set-version.mjs / c
 8. **Windows/MSYS（git-bash）注意**：杀进程 `taskkill //F //PID <pid>`；`/tmp` 是 MSYS 私有目录，临时文件放 `$LOCALAPPDATA/Temp` 或 Hermes scratch；git 的 LF/CRLF warning 是正常现象；`curl -F` 传中文会因控制台编码损坏，测 UTF-8 multipart 用 Python/Node 客户端。
 9. **端口排查**：8787（API dev）/ 5173（web dev）/ 3000（Docker）。起服务前 `netstat -ano | grep :8787` 查残留；E2E 一律 `CI=1` 强制干净启动。
 10. **数据目录 = 状态**：`server/data`（dev）、`./data`（Docker）、`e2e/.data`（测试）。整个删掉即重置；均在 `.gitignore`，不要提交。注意重置后"首用户=管理员"逻辑会重新生效。
-11. **上传校验只有魔数**：EPUB 只要 ZIP 头（`PK`）、PDF 只要 `%PDF`；伪造文件能上传、打开才报错——v1 有意为之（零服务端解包依赖）。上限 `MAX_UPLOAD_MB=200`。
+11. **上传校验只有魔数**：EPUB 只要 ZIP 头（`PK`）、PDF 只要 `%PDF`；伪造文件能上传、打开才报错——有意为之（零服务端解包依赖）。上限 `MAX_UPLOAD_MB=200`。
 12. **Tailwind v4 语法敏感点**：dark 模式用 `@custom-variant dark`（web/src/index.css 已配）；升级 Tailwind 时这是首要回归点（计划 R11）。
 
 ## 边界与红线
