@@ -93,15 +93,20 @@ CI=1 pnpm test:e2e              # 预期：3 passed（CI=1 强制 Playwright 自
 
 CI（`.github/workflows/ci.yml`）：push/PR→main 自动跑三个 job——`checks`（`pnpm build` 版本门禁 + 三包构建、`-r typecheck`、`-r test`）、`e2e`（构建 shared + fixtures + Playwright）、`docker`（compose 构建 + `/api/health` 冒烟），即上面 1–4 的自动化版；三个 job 已设为 main 的必需检查（PR 合并前必须全绿；直接 push 不受限）。job id 与分支保护检查名绑定，改名须同步更新分支保护配置与本条说明。
 
+发布（`.github/workflows/publish-image.yml`）：push `v*` tag 自动发布镜像到 GHCR（`ghcr.io/bingo888-lab/onlinelearninglab`，标签 `X.Y.Z` / `X.Y` / `latest` / `sha-<短哈希>`）；手动触发默认 `dry_run=true`（只构建不推）。补发历史 tag：`gh workflow run publish-image.yml --ref main -f release_tag=vX.Y.Z -f dry_run=false`（需要顺带更新 `latest` 时加 `-f set_latest=true`）。原因：GitHub 会拒绝 dispatch 到「该 ref 自身不含本 workflow 文件」的 tag（cut 于本流程之前的 tag 必然缺文件），故补发统一走「默认分支的 workflow + `release_tag` 输入、job 内检出目标 tag」模式；`--ref vX.Y.Z` 仅对含本文件的新 tag 可行。发布 job **不在**必需检查里（只由 tag/手动触发，挂上去会卡死所有 PR）。所有 workflow 的 `uses` 一律 pin 到 commit SHA（`owner/repo@<40 位 sha> # vX.Y.Z`）；升级 action 要手动改 SHA（两个 workflow 都要查一遍）。
+
 ### 运维
 
 部署与运行（Docker Compose 一条命令）：
 
 ```bash
-docker compose up -d --build    # 部署 → http://localhost:3000（数据在 ./data）
+docker compose pull && docker compose up -d   # 快速部署：拉取 ghcr.io 预构建镜像 → http://localhost:3000（数据在 ./data）
+docker compose up -d --build                  # 本地构建部署（开发路径；与上一条共用同一 compose 文件）
 docker compose logs -f app && docker compose down
 docker compose config --quiet   # 配置校验（涉及 Docker 改动时必过）
 ```
+
+预构建镜像在 `ghcr.io/bingo888-lab/onlinelearninglab`（`latest` 跟随最新发布；也可用发布号如 `0.1.0` 锁版本），匿名拉取无需登录。
 
 冒烟验证：`/api/health` → `{"ok":true,"version":"..."}`（version 运行时来自服务端 package.json）；`docker compose logs` 启动行含版本号。
 
@@ -122,7 +127,7 @@ docker compose config --quiet   # 配置校验（涉及 Docker 改动时必过�
 **版本与发布**
 
 - **单一事实来源 = 根 `package.json` 的 `version`**：四个 package.json（根 + shared/server/web）必须一致（子包均为私有包，随根版本走）。代码/文档里不硬编码当前版本号（历史事实如「首个 tag `v0.1.0`」除外）：服务端运行时读自身 `package.json`（`server/src/version.ts`；dev=`src/`、构建=`dist/`、Docker=`pnpm deploy` 产物三种布局下 `../package.json` 均有效），web 由 Vite `define` 注入 `__APP_VERSION__`（改版本号后需重启 dev server）。
-- **升级/发布流程**：`pnpm version:set x.y.z`（同步四个 package.json）→ `CHANGELOG.md` 顶部补 `## [x.y.z] - YYYY-MM-DD` → `pnpm build` 自校验（`scripts/check-version.mjs`：版本一致 + CHANGELOG 有条目，失败即中断，Docker 构建同样经过）→ commit → `git tag -a vx.y.z -m "..."` → push（**tag 推送后不要改写**）→ 需要时在 GitHub 为该 tag 建 Release（说明用 CHANGELOG 对应段落）。
+- **升级/发布流程**：`pnpm version:set x.y.z`（同步四个 package.json）→ `CHANGELOG.md` 顶部补 `## [x.y.z] - YYYY-MM-DD` → `pnpm build` 自校验（`scripts/check-version.mjs`：版本一致 + CHANGELOG 有条目，失败即中断，Docker 构建同样经过）→ commit → `git tag -a vx.y.z -m "..."` → push（**tag 推送后不要改写**）→ 等 CI 与 Publish image 两个 run 全绿、镜像可拉取 → 需要时在 GitHub 为该 tag 建 Release（说明用 CHANGELOG 对应段落）。
 - **构建入口**：用根 `pnpm build`（先校验再递归构建）；直接 `pnpm -r build` 会跳过版本门禁。
 - **只有一套版本号**：semver `vX.Y.Z`、与 git tag 一一对应，首个为 `v0.1.0`；不存在「v1/v2 产品阶段」之类的第二套叫法（旧表述已废止），凡需指版本一律用发布号。当前发布线为 `0.x`（不承诺 API 稳定）。
 - **禁止前瞻性版本承诺（红线）**：任何文档、注释、提交信息都不得写「v2 将加入 X」「X 是 v1.1 候选」这类把未做之事绑定到将来版本的表述。未做之事只陈述为「未决策/待评估」并写明理由与取舍；版本号只在发布时赋予已完成的工作（以 CHANGELOG 为准），避免对开发节奏形成隐性承诺。
@@ -163,6 +168,7 @@ data-testid 是 E2E 契约，全表见计划附录 C。按页面速查：`login-
 10. **数据目录 = 状态**：`server/data`（dev）、`./data`（Docker）、`e2e/.data`（测试）。整个删掉即重置；均在 `.gitignore`，不要提交。注意重置后"首用户=管理员"逻辑会重新生效。
 11. **上传校验只有魔数**：EPUB 只要 ZIP 头（`PK`）、PDF 只要 `%PDF`；伪造文件能上传、打开才报错——有意为之（零服务端解包依赖）。上限 `MAX_UPLOAD_MB=200`。
 12. **Tailwind v4 语法敏感点**：dark 模式用 `@custom-variant dark`（web/src/index.css 已配）；升级 Tailwind 时这是首要回归点（计划 R11）。
+13. **GHCR 发布/拉取**：镜像名必须全小写（`ghcr.io/bingo888-lab/onlinelearninglab`；`${{ github.repository }}` 含大写不能直接用）；`latest` 只由 `v*` tag 推送（或补发 run 勾 `set_latest`）更新，手动 dispatch 默认 `dry_run=true` 不推送；补发老 tag 必须用 `--ref main -f release_tag=vX.Y.Z`（GitHub 拒绝 dispatch 到不含本 workflow 文件的 tag ref，重写 tag 不是选项）；包可见性必须为 public 才能匿名拉取（首次需改一次）。
 
 ### 边界与红线
 
