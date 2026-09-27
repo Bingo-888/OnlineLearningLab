@@ -6,6 +6,7 @@ server/.env
 .env
 e2e/.data/
 e2e/.fixtures/
+.hermes/
 playwright-report/
 test-results/
 *.local

@@ -1,7 +1,7 @@
 # AGENTS.md
 
 面向 AI 编码代理（人类同样适用）的项目开发指南。**开始任何任务前先读本文件。**
-更深的设计决策、风险清单与验收标准见完整计划：`.hermes/plans/2026-09-27_131002-online-learning-platform.md`（历史事实来源，不修改）。
+更深的设计决策、风险清单与验收标准见完整计划：`.hermes/plans/2026-09-27_131002-online-learning-platform.md`（本地历史档案，已在 `.gitignore` 不入库；只读不改）。
 
 ## 项目概览
 
@@ -114,7 +114,7 @@ scripts/          # make-fixtures.mjs / reset-e2e-data.mjs
 
 ## 边界与红线
 
-- 不修改 `.hermes/plans/**`（历史档案）；新决策写进 AGENTS.md 或新文档。
+- `.hermes/**` 是本地档案、不入库（`.gitignore` 已忽略）：不修改 `plans/**`；新决策写进 AGENTS.md 或新文档。
 - 不提交：`node_modules/`、`*/dist/`、`data/`、`server/data/`、`e2e/.data/`、`e2e/.fixtures/`、`*.env`、`playwright-report/`。
 - `pnpm-lock.yaml` 只由 pnpm 命令更新，不手改。
 - 服务端测试必须用 `server/src/test-helpers.ts`（`makeTestApp` 临时目录 + 内存级隔离），不得依赖真实 `server/data`。
