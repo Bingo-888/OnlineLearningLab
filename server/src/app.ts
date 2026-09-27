@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { DatabaseSync } from 'node:sqlite'
 import type { AppEnv } from './types.js'
 import { authRoutes } from './routes/auth.js'
+import { bookRoutes } from './routes/books.js'
 import { makeRateLimiter } from './auth.js'
 
 export type { AppEnv } from './types.js'
@@ -19,6 +20,7 @@ export function createApp(opts: AppOptions): Hono<AppEnv> {
   app.get('/api/health', (c) => c.json({ ok: true }))
   const loginLimiter = makeRateLimiter({ limit: 10, windowMs: 10 * 60_000 })
   app.route('/api/auth', authRoutes(opts, loginLimiter))
+  app.route('/api/books', bookRoutes(opts))
   app.notFound((c) => c.json({ error: 'not_found' }, 404))
   return app
 }
