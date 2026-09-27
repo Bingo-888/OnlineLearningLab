@@ -1,0 +1,16 @@
+services:
+  app:
+    build: .
+    image: online-learning-lab:latest
+    container_name: oll
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      DATA_DIR: /data
+      MAX_UPLOAD_MB: "200"
+      # 前面套了 HTTPS 反向代理（如 Caddy/Nginx）后改成 "true"
+      COOKIE_SECURE: "false"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
